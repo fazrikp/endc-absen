@@ -1,0 +1,439 @@
+{% extends 'base.html' %}
+
+{% block title %}CRP Extract Web{% endblock %}
+
+{% block content %}
+{% set page_endpoint = current_endpoint or 'index' %}
+<div class="row g-4">
+  <div class="col-12">
+    <section class="glass-card p-4">
+      <form class="row g-3 align-items-end" method="get" action="{{ url_for('result', run_id=selected_run.public_id) if selected_run else url_for('index') }}">
+        <div class="col-12 col-md-8">
+          <label class="form-label form-label-strong">Search history / log</label>
+          <input class="form-control form-control-lg glass-input" type="search" name="q" value="{{ search_term }}" placeholder="Search file name, mode, method, status, message">
+        </div>
+        <div class="col-12 col-md-4 d-flex gap-2">
+          <button class="btn btn-glow flex-grow-1" type="submit">Search</button>
+          {% if selected_run %}
+            <a class="btn btn-outline-light" href="{{ url_for('result', run_id=selected_run.public_id) }}">Reset</a>
+          {% else %}
+            <a class="btn btn-outline-light" href="{{ url_for('index') }}">Reset</a>
+          {% endif %}
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div class="col-12 col-xl-5">
+    <section class="glass-card p-4 h-100">
+      <div class="section-label mb-3">Upload & Process</div>
+      <form action="{{ url_for('process') }}" method="post" enctype="multipart/form-data" class="stack-gap">
+        <div>
+          <label class="form-label form-label-strong">File input</label>
+          <input class="form-control form-control-lg glass-input" type="file" name="file" accept=".crp,.txt,.csv,.bin,.mdb,.accdb" required>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-6">
+            <label class="form-label form-label-strong">Mode</label>
+            <select class="form-select glass-input" name="mode" id="modeSelect">
+              <option value="decrypt" selected>Decrypt</option>
+              <option value="encrypt">Encrypt</option>
+              <option value="analyze">Analyze</option>
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label form-label-strong">Method</label>
+            <select class="form-select glass-input" name="method" id="methodSelect">
+              <option value="auto" selected>Auto</option>
+              <option value="aes">AES</option>
+              <option value="xor">XOR</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="form-label form-label-strong">AES key</label>
+          <input class="form-control glass-input" type="text" name="aes_key" placeholder="Default: {{ default_key }}">
+        </div>
+
+        <div>
+          <label class="form-label form-label-strong">XOR key</label>
+          <input class="form-control glass-input" type="number" min="0" max="255" name="xor_key" placeholder="55">
+        </div>
+
+        <div>
+          <label class="form-label form-label-strong">Output name</label>
+          <input class="form-control glass-input" type="text" name="output_name" placeholder="hasil_decrypt.txt / hasil_encrypt.crp">
+        </div>
+
+        <button class="btn btn-glow btn-lg w-100" type="submit">Process File</button>
+      </form>
+
+      <div class="mini-note mt-4">
+        Default AES key yang tervalidasi pada sample adalah <span>{{ default_key }}</span>.
+      </div>
+    </section>
+  </div>
+
+  <div class="col-12 col-xl-7">
+    <section class="glass-card p-4 h-100">
+      <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-3">
+        <div>
+          <div class="section-label">Latest Result</div>
+          <h2 class="panel-title mb-0">Section Frame Table</h2>
+        </div>
+        {% if selected_run %}
+          <div class="d-flex gap-2 align-items-start flex-wrap">
+            {% if selected_run.mode == 'decrypt' and section_preview %}
+              <a class="btn btn-outline-light btn-sm" href="#editorPanel">Edit data</a>
+            {% endif %}
+            {% if selected_run.mode == 'mdb' %}
+              <a class="btn btn-light btn-sm" href="{{ url_for('download_mdb', run_id=selected_run.public_id) }}">Download MDB</a>
+            {% else %}
+              <a class="btn btn-outline-light btn-sm" href="{{ url_for('download', run_id=selected_run.public_id) }}">Download TXT</a>
+              {% if selected_run.reencrypt_path %}
+                <a class="btn btn-light btn-sm" href="{{ url_for('download_reencrypt', run_id=selected_run.public_id) }}">Download CRP</a>
+              {% endif %}
+            {% endif %}
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('export_csv', run_id=selected_run.public_id) }}">Export CSV</a>
+            <span class="status-pill status-{{ selected_run.status }}">{{ selected_run.status }}</span>
+          </div>
+        {% endif %}
+      </div>
+
+      {% if selected_run %}
+        <div class="meta-grid mb-3">
+          <div><span>Source</span><strong>{{ selected_run.original_name }}</strong></div>
+          <div><span>Mode</span><strong>{{ selected_run.mode }}</strong></div>
+          <div><span>Method</span><strong>{{ selected_run.method }}</strong></div>
+          <div><span>Rows</span><strong>{{ selected_run.section_count or 0 }}</strong></div>
+          <div><span>Input size</span><strong>{{ selected_run.input_size }} bytes</strong></div>
+          <div><span>Output size</span><strong>{{ selected_run.output_size or 0 }} bytes</strong></div>
+        </div>
+
+        {% if section_rows %}
+          <div class="table-responsive table-wrap mb-3">
+            <table class="table table-dark table-hover align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Count</th>
+                  <th>EnrollNumber</th>
+                  <th>VerifyMode</th>
+                  <th>InOutMode</th>
+                  <th>Date</th>
+                  <th>WorkCode</th>
+                  <th>Reserved</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in section_rows %}
+                  <tr>
+                    <td>{{ row.count }}</td>
+                    <td>{{ row.enroll_number }}</td>
+                    <td>{{ row.verify_mode }}</td>
+                    <td>{{ row.in_out_mode }}</td>
+                    <td>{{ row.date }}</td>
+                    <td>{{ row.work_code }}</td>
+                    <td>{{ row.reserved }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+
+        {% if selected_run.mode != 'mdb' and section_preview %}
+          <div id="editorPanel" class="preview-box mt-3">
+            <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mb-3">
+              <div>
+                <div class="preview-title mb-1">Raw editor</div>
+                <div class="mini-note">Edit data langsung di sini. Menyimpan tanpa perubahan akan tetap mempertahankan hasil round-trip yang sama.</div>
+              </div>
+            </div>
+            <form action="{{ url_for('save_edit', run_id=selected_run.public_id) }}" method="post" class="stack-gap">
+              <div>
+                <textarea class="form-control glass-input font-monospace" name="raw_text" rows="14" spellcheck="false">{{ section_preview }}</textarea>
+              </div>
+              <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-glow" type="submit">Save Edited Text</button>
+                <button class="btn btn-outline-light" type="submit" name="re_encrypt" value="1">Save & Re-encrypt</button>
+              </div>
+            </form>
+          </div>
+        {% endif %}
+
+        {% if selected_run.mode != 'mdb' and section_rows %}
+          <div class="preview-box mt-3">
+            <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mb-3">
+              <div>
+                <div class="preview-title mb-1">Row-by-row editor</div>
+                <div class="mini-note">Edit per baris langsung di tabel. Simpan untuk menulis ulang data ke format attendance yang sama.</div>
+              </div>
+            </div>
+            <form action="{{ url_for('save_rows', run_id=selected_run.public_id) }}" method="post" class="stack-gap">
+              <div class="table-responsive table-wrap row-editor-wrap">
+                <table class="table table-dark table-hover align-middle mb-0 row-editor-table">
+                  <thead>
+                    <tr>
+                      <th>Count</th>
+                      <th>EnrollNumber</th>
+                      <th>VerifyMode</th>
+                      <th>InOutMode</th>
+                      <th>Date</th>
+                      <th>WorkCode</th>
+                      <th>Reserved</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in section_rows %}
+                      <tr>
+                        <td>
+                          <input type="hidden" name="original_raw" value="{{ row.raw | e }}">
+                          <input class="form-control glass-input glass-input-sm" type="text" name="count" value="{{ row.count }}">
+                        </td>
+                        <td><input class="form-control glass-input glass-input-sm" type="text" name="enroll_number" value="{{ row.enroll_number }}"></td>
+                        <td><input class="form-control glass-input glass-input-sm" type="text" name="verify_mode" value="{{ row.verify_mode }}"></td>
+                        <td><input class="form-control glass-input glass-input-sm" type="text" name="in_out_mode" value="{{ row.in_out_mode }}"></td>
+                        <td><input class="form-control glass-input glass-input-sm" type="text" name="date" value="{{ row.date }}"></td>
+                        <td><input class="form-control glass-input glass-input-sm" type="text" name="work_code" value="{{ row.work_code }}"></td>
+                        <td><input class="form-control glass-input glass-input-sm" type="text" name="reserved" value="{{ row.reserved }}"></td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-glow" type="submit">Save Table Rows</button>
+                <button class="btn btn-outline-light" type="submit" name="re_encrypt" value="1">Save Table Rows & Re-encrypt</button>
+              </div>
+            </form>
+          </div>
+        {% endif %}
+
+        {% if selected_run.mode == 'mdb' %}
+          <div id="mdbPanel" data-run-id="{{ selected_run.public_id }}" class="preview-box mt-3">
+            <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mb-3">
+              <div>
+                <div class="preview-title mb-1">MDB editor</div>
+                <div class="mini-note">Browse tables, edit row-by-row, lalu simpan kembali ke file `.mdb` agar tetap bisa dibaca mesin.</div>
+              </div>
+            </div>
+
+            {% set table_list = mdb_view.tables or [] %}
+            <form class="row g-3 align-items-end mb-3" method="get" action="{{ url_for('result', run_id=selected_run.public_id) }}">
+              <div class="col-12 col-md-8">
+                <label class="form-label form-label-strong">Select table</label>
+                <select class="form-select glass-input" name="table">
+                  {% for table_name in table_list %}
+                    <option value="{{ table_name }}" {% if table_name == mdb_view.selected_table %}selected{% endif %}>{{ table_name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12 col-md-4 d-flex gap-2">
+                <input type="hidden" name="mdb_page" value="1">
+                <button class="btn btn-glow flex-grow-1" type="submit">Load Table</button>
+              </div>
+            </form>
+
+            {% if mdb_view.selected_table %}
+              <div class="meta-grid mb-3">
+                <div><span>Table</span><strong>{{ mdb_view.selected_table }}</strong></div>
+                <div><span>Rows</span><strong>{{ mdb_view.total_rows }}</strong></div>
+                <div><span>Page</span><strong>{{ mdb_view.page }} / {{ mdb_view.total_pages }}</strong></div>
+                <div><span>Primary Key</span><strong>{% if mdb_view.primary_keys %}{{ mdb_view.primary_keys | join(', ') }}{% else %}-{% endif %}</strong></div>
+              </div>
+
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                {% if mdb_view.page > 1 %}
+                  <a class="btn btn-outline-light btn-sm" href="{{ url_for('result', run_id=selected_run.public_id, table=mdb_view.selected_table, mdb_page=mdb_view.page - 1) }}">Prev</a>
+                {% endif %}
+                {% if mdb_view.page < mdb_view.total_pages %}
+                  <a class="btn btn-outline-light btn-sm" href="{{ url_for('result', run_id=selected_run.public_id, table=mdb_view.selected_table, mdb_page=mdb_view.page + 1) }}">Next</a>
+                {% endif %}
+                <button id="previewMdbSchemaBtn" class="btn btn-outline-light btn-sm">Preview Schema</button>
+              </div>
+
+              <div id="mdbSchemaPreview" class="mb-3" style="display:none;">
+                <div class="preview-title">Table Schema Preview</div>
+                <div class="table-responsive table-wrap">
+                  <table id="mdbSchemaTable" class="table table-dark table-sm mb-0">
+                    <thead>
+                      <tr><th>Column</th><th>Type</th><th>PK</th></tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+              </div>
+
+              <form action="{{ url_for('save_mdb_rows', run_id=selected_run.public_id, table_name=mdb_view.selected_table) }}" method="post" class="stack-gap">
+                <div class="table-responsive table-wrap row-editor-wrap">
+                  <table class="table table-dark table-hover align-middle mb-0 row-editor-table">
+                    <thead>
+                      <tr>
+                        {% for column in mdb_view.columns %}
+                          <th>
+                            {{ column.name }}
+                            {% if column.is_pk %}
+                              <div class="mini-note">PK</div>
+                            {% endif %}
+                          </th>
+                        {% endfor %}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for row in mdb_view.rows %}
+                        <tr>
+                          {% for column in mdb_view.columns %}
+                            {% set cell_value = row[column.name] if row[column.name] is not none else '' %}
+                            <td>
+                              <input type="hidden" name="{{ column.original_field_id }}" value="{{ cell_value | e }}">
+                              <input class="form-control glass-input glass-input-sm" type="text" name="{{ column.field_id }}" value="{{ cell_value | e }}">
+                            </td>
+                          {% endfor %}
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                  <button class="btn btn-glow" type="submit">Save MDB Table</button>
+                </div>
+              </form>
+            {% else %}
+              <div class="empty-state">Tabel tidak ditemukan di file MDB ini.</div>
+            {% endif %}
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="empty-state">
+          Upload file untuk melihat hasil proses, tabel section frame, dan preview raw data di sini.
+        </div>
+      {% endif %}
+    </section>
+  </div>
+
+  <div class="col-12 col-lg-7">
+    <section class="glass-card p-4 h-100">
+      <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mb-3">
+        <div>
+          <div class="section-label mb-2">Upload History</div>
+          <div class="mini-note">{{ history_total }} result ditemukan</div>
+        </div>
+        {% if history_total_pages > 1 %}
+          <div class="d-flex gap-2 align-items-center flex-wrap">
+            {% if history_page > 1 %}
+              {% if selected_run %}
+                <a class="btn btn-outline-light btn-sm" href="{{ url_for('result', run_id=selected_run.public_id, q=search_term, history_page=history_page - 1, log_page=log_page) }}">Prev</a>
+              {% else %}
+                <a class="btn btn-outline-light btn-sm" href="{{ url_for('index', q=search_term, history_page=history_page - 1, log_page=log_page) }}">Prev</a>
+              {% endif %}
+            {% endif %}
+            <span class="mini-note">Page {{ history_page }} / {{ history_total_pages }}</span>
+            {% if history_page < history_total_pages %}
+              {% if selected_run %}
+                <a class="btn btn-outline-light btn-sm" href="{{ url_for('result', run_id=selected_run.public_id, q=search_term, history_page=history_page + 1, log_page=log_page) }}">Next</a>
+              {% else %}
+                <a class="btn btn-outline-light btn-sm" href="{{ url_for('index', q=search_term, history_page=history_page + 1, log_page=log_page) }}">Next</a>
+              {% endif %}
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+      <div class="table-responsive table-wrap">
+        <table class="table table-dark table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Mode</th>
+              <th>Method</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for run in runs %}
+              <tr>
+                <td>
+                  <div class="file-name">{{ run.original_name }}</div>
+                  <div class="file-meta">{{ run.input_size }} bytes</div>
+                </td>
+                <td>{{ run.mode }}</td>
+                <td>{{ run.method }}</td>
+                <td><span class="status-pill status-{{ run.status }}">{{ run.status }}</span></td>
+                <td>{{ run.created_at }}</td>
+                <td class="text-end">
+                  <div class="d-flex gap-2 justify-content-end">
+                    <a class="btn btn-outline-light btn-sm" href="{{ url_for('result', run_id=run.public_id) }}">View</a>
+                    {% if run.status == 'success' %}
+                      <a class="btn btn-light btn-sm" href="{{ url_for('download', run_id=run.public_id) }}">Download</a>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div class="col-12 col-lg-5">
+    <section class="glass-card p-4 h-100">
+      <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mb-3">
+        <div>
+          <div class="section-label mb-2">Logs</div>
+          <div class="mini-note">{{ log_total }} log item</div>
+        </div>
+        {% if log_total_pages > 1 %}
+          <div class="d-flex gap-2 align-items-center flex-wrap">
+            {% if log_page > 1 %}
+              {% if selected_run %}
+                <a class="btn btn-outline-light btn-sm" href="{{ url_for('result', run_id=selected_run.public_id, q=search_term, history_page=history_page, log_page=log_page - 1) }}">Prev</a>
+              {% else %}
+                <a class="btn btn-outline-light btn-sm" href="{{ url_for('index', q=search_term, history_page=history_page, log_page=log_page - 1) }}">Prev</a>
+              {% endif %}
+            {% endif %}
+            <span class="mini-note">Page {{ log_page }} / {{ log_total_pages }}</span>
+            {% if log_page < log_total_pages %}
+              {% if selected_run %}
+                <a class="btn btn-outline-light btn-sm" href="{{ url_for('result', run_id=selected_run.public_id, q=search_term, history_page=history_page, log_page=log_page + 1) }}">Next</a>
+              {% else %}
+                <a class="btn btn-outline-light btn-sm" href="{{ url_for('index', q=search_term, history_page=history_page, log_page=log_page + 1) }}">Next</a>
+              {% endif %}
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+      <div class="table-responsive table-wrap">
+        <table class="table table-dark table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Level</th>
+              <th>Message</th>
+              <th>Source</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for log in logs %}
+              <tr>
+                <td><span class="status-pill log-{{ log.level }}">{{ log.level }}</span></td>
+                <td>{{ log.message }}</td>
+                <td>{{ log.original_name or '-' }}</td>
+                <td>{{ log.created_at }}</td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="4" class="text-center py-4">Belum ada log.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

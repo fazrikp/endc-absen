@@ -983,6 +983,9 @@ def api_mdb_schema(run_id, table_name):
     return jsonify({"table": table_name, "columns": schema})
 
 
+init_db()
+
+
 def main():
     init_db()
     port = int(os.environ.get("PORT", "5000"))
